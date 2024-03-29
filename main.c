@@ -58,17 +58,34 @@ typedef struct {
 	bool used;
 } tile;
 
-tile build_tile(char letter) {
-	tile ret = {
-		.letter = letter,
-		.value = get_value(letter),
-		.double_word = false,
-		.letter_mult = 1,
-		.used = false,
-	};
-	return ret;
+static tile board[5][5];
+
+static void init_board(char str[26]) {
+	int str_i = 0;
+	tile cur;
+	for (int i = 0 ; i < 5 ; ++i) {
+		for (int j = 0 ; j < 5 ; ++j) {
+			board[i][j].letter = str[str_i];
+			board[i][j].value = get_value(str[str_i]);
+			board[i][j].double_word = false;
+			board[i][j].letter_mult = 1;
+			board[i][j].used = false;
+			str_i++;
+		}
+	}
+}
+
+static void print_board() {
+	for (int i = 0 ; i < 5 ; ++i) {
+		for (int j = 0 ; j < 5 ; ++j) {
+			printf("%c ", board[i][j].letter);
+		}
+		printf("\n");
+	}
 }
 
 int main(void) {
+	init_board("onindtdwocltrrtaoehoesfen");
+	print_board();
 	return 0;
 }
