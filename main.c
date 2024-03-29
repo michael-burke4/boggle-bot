@@ -39,8 +39,8 @@ static bool is_word(char *word)
 	return false;
 }
 
-static ssize_t find_first_prefix_index(char *word) {
-	size_t i = 0;
+static ssize_t find_first_prefix_index(char *word, size_t start) {
+	size_t i = start;
 	size_t len = strlen(word);
 	int res;
 	while ((res = strncmp(word, words[i], len)) > 0)
@@ -70,6 +70,5 @@ tile build_tile(char letter) {
 }
 
 int main(void) {
-	printf("%ld\n", find_first_prefix_index("syz"));
 	return 0;
 }
