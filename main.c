@@ -84,8 +84,54 @@ static void print_board() {
 	}
 }
 
+static tile wordstack[25];
+static size_t stack_i = 0;
+
+static void push(tile t) {
+	if (stack_i >= 25)
+		err(1, "max word stack. Not marking tiles as unused?");
+	wordstack[stack_i].letter = t.letter;
+	wordstack[stack_i].value = t.value;
+	wordstack[stack_i].double_word = t.double_word;
+	wordstack[stack_i].letter_mult = t.letter_mult;
+	wordstack[stack_i].used = true;
+	stack_i++;
+}
+static void pop() {
+	stack_i--;
+}
+static void print_stack() {
+	for (size_t i = 0 ; i < stack_i ; ++i) {
+		printf("%c", wordstack[i].letter);
+	}
+	printf("\n");
+}
+
+static void find_words(size_t curlen, int i, int j) {
+	int flag = 0;
+	size_t prefix_index;
+	if (i < 0 || j < 0 || i > 5 || j > 5 || board[i][j].used)
+		return;
+	push(board[i][j]);
+	board[i][j].used = 1;
+	pop(board[i][j]);
+}
+
 int main(void) {
 	init_board("onindtdwocltrrtaoehoesfen");
 	print_board();
+	tile p = {
+		.letter = 'a',
+		.value = 1,
+		.double_word = false,
+		.letter_mult = 1,
+		.used = true,
+	};
+	push(p);
+	push(p);
+	push(p);
+	print_stack();
+	pop();
+	print_stack();
 	return 0;
 }
