@@ -22,12 +22,14 @@ static int get_value(char c) {
 
 static bool is_word(char *word)
 {
-	size_t lb = 0;
-	size_t ub = (sizeof words) / (sizeof (char *)) - 1;
-	size_t mp;
+	ssize_t lb = 0;
+	ssize_t ub = (sizeof words) / (sizeof (char *)) - 1;
+	ssize_t mp;
 	int cmp_res = -1;
+	int count = 0;
 	while (lb <= ub) {
-		mp = lb + ((ub - lb) / 2);
+		mp = ((lb + ub) / 2);
+		//printf("words[%ld]: %s\n", mp, words[mp]);
 		cmp_res = strcmp(word, words[mp]);
 		if (!cmp_res)
 			return true;
@@ -39,6 +41,8 @@ static bool is_word(char *word)
 	return false;
 }
 
+// TODO: make this a binary search that finds a match then iterates backwards
+// until it doesn't match any more. Much faster that way.
 static ssize_t find_first_prefix_index(char *word, size_t start) {
 	size_t i = start;
 	size_t len = strlen(word);
@@ -52,7 +56,6 @@ static ssize_t find_first_prefix_index(char *word, size_t start) {
 
 typedef struct {
 	char letter;
-	unsigned int value;
 	bool double_word;
 	unsigned int letter_mult;
 	bool used;
@@ -66,7 +69,6 @@ static void init_board(char str[26]) {
 	for (int i = 0 ; i < 5 ; ++i) {
 		for (int j = 0 ; j < 5 ; ++j) {
 			board[i][j].letter = str[str_i];
-			board[i][j].value = get_value(str[str_i]);
 			board[i][j].double_word = false;
 			board[i][j].letter_mult = 1;
 			board[i][j].used = false;
@@ -91,7 +93,6 @@ static void push(tile t) {
 	if (stack_i >= 25)
 		err(1, "max word stack. Not marking tiles as unused?");
 	wordstack[stack_i].letter = t.letter;
-	wordstack[stack_i].value = t.value;
 	wordstack[stack_i].double_word = t.double_word;
 	wordstack[stack_i].letter_mult = t.letter_mult;
 	wordstack[stack_i].used = true;
@@ -107,31 +108,72 @@ static void print_stack() {
 	printf("\n");
 }
 
+static int stack_value() {
+	size_t i = 0;
+	bool double_total = false;
+	int total = 0;
+	for (; i < stack_i ; ++i) {
+		total += get_value(wordstack[i].letter) * wordstack[i].letter_mult;
+		double_total = wordstack[i].double_word || double_total;
+	}
+	if (double_total)
+		total *= 2;
+	if (stack_i >= 5)
+		total += 10;
+	return total;
+}
+
+static void check_stack_word(bool *is_a_word, ssize_t *first_prefix_index) {
+	char word[26];
+	size_t i;
+	//print_stack();
+	for (i = 0 ; i < stack_i ; ++i) {
+		word[i] = wordstack[i].letter;
+	}
+	word[i] = '\0';
+	*is_a_word = is_word(word);
+	*first_prefix_index = find_first_prefix_index(word, *first_prefix_index);
+}
+
 static void find_words(size_t curlen, int i, int j) {
-	int flag = 0;
-	size_t prefix_index;
-	if (i < 0 || j < 0 || i > 5 || j > 5 || board[i][j].used)
+	ssize_t prefix_index = 0;
+	bool is_a_word;
+	if (i < 0 || j < 0 || i > 4 || j > 4 || board[i][j].used)
 		return;
 	push(board[i][j]);
-	board[i][j].used = 1;
+	check_stack_word(&is_a_word, &prefix_index);
+	if (is_a_word) {
+		printf("%d ", stack_value());
+		print_stack();
+	}
+	if (is_a_word || prefix_index > -1) {
+		board[i][j].used = 1;
+		find_words(curlen + 1, i - 1, j);
+		find_words(curlen + 1, i - 1, j + 1);
+		find_words(curlen + 1, i, j + 1);
+		find_words(curlen + 1, i + 1, j + 1);
+		find_words(curlen + 1, i + 1, j);
+		find_words(curlen + 1, i + 1, j - 1);
+		find_words(curlen + 1, i, j - 1);
+		find_words(curlen + 1, i - 1, j - 1);
+	}
+	board[i][j].used = 0; // Prob unnecessary but w/e
 	pop(board[i][j]);
 }
 
+static void find_all_words() {
+	for (int i = 0 ; i < 5 ; ++i) {
+		for (int j = 0 ; j < 5 ; ++j) {
+			find_words(0, i, j);
+		}
+	}
+}
+
 int main(void) {
-	init_board("onindtdwocltrrtaoehoesfen");
-	print_board();
-	tile p = {
-		.letter = 'a',
-		.value = 1,
-		.double_word = false,
-		.letter_mult = 1,
-		.used = true,
-	};
-	push(p);
-	push(p);
-	push(p);
-	print_stack();
-	pop();
-	print_stack();
+      //init_board("qqqqqqqqqqqqqqqqqqqqqqqqq");
+	init_board("aievtcleheaoqcooosndyspnb");
+	board[0][0].letter_mult = 2;
+	board[0][1].double_word = true;
+	find_all_words();
 	return 0;
 }
