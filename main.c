@@ -1,5 +1,6 @@
 #include <err.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -123,11 +124,11 @@ static void push(tile t) {
 static void pop() {
 	stack_i--;
 }
-static void print_stack() {
+static void print_stack(int fd) {
 	for (size_t i = 0 ; i < stack_i ; ++i) {
-		printf("%c", wordstack[i].letter);
+		dprintf(fd, "%c", wordstack[i].letter);
 	}
-	printf("\n");
+	dprintf(fd, "\n");
 }
 
 static int stack_value() {
@@ -156,7 +157,7 @@ static void check_stack_word(bool *is_a_word, ssize_t *first_prefix_index) {
 	*first_prefix_index = find_first_prefix_index(word, *first_prefix_index);
 }
 
-static void find_words(size_t curlen, int i, int j) {
+static void find_words(int fd, size_t curlen, int i, int j) {
 	ssize_t prefix_index = 0;
 	bool is_a_word;
 	if (i < 0 || j < 0 || i >= BOARD_SIZE || j >= BOARD_SIZE || board[i][j].used)
@@ -164,28 +165,28 @@ static void find_words(size_t curlen, int i, int j) {
 	push(board[i][j]);
 	check_stack_word(&is_a_word, &prefix_index);
 	if (is_a_word) {
-		printf("%d ", stack_value());
-		print_stack();
+		dprintf(fd, "%d ", stack_value());
+		print_stack(fd);
 	}
 	if (is_a_word || prefix_index > -1) {
 		board[i][j].used = 1;
-		find_words(curlen + 1, i - 1, j);
-		find_words(curlen + 1, i - 1, j + 1);
-		find_words(curlen + 1, i, j + 1);
-		find_words(curlen + 1, i + 1, j + 1);
-		find_words(curlen + 1, i + 1, j);
-		find_words(curlen + 1, i + 1, j - 1);
-		find_words(curlen + 1, i, j - 1);
-		find_words(curlen + 1, i - 1, j - 1);
+		find_words(fd, curlen + 1, i - 1, j);
+		find_words(fd, curlen + 1, i - 1, j + 1);
+		find_words(fd, curlen + 1, i, j + 1);
+		find_words(fd, curlen + 1, i + 1, j + 1);
+		find_words(fd, curlen + 1, i + 1, j);
+		find_words(fd, curlen + 1, i + 1, j - 1);
+		find_words(fd, curlen + 1, i, j - 1);
+		find_words(fd, curlen + 1, i - 1, j - 1);
 	}
 	board[i][j].used = 0;
 	pop(board[i][j]);
 }
 
-static void find_all_words() {
+static void find_all_words(int fd) {
 	for (int i = 0 ; i < BOARD_SIZE ; ++i) {
 		for (int j = 0 ; j < BOARD_SIZE ; ++j) {
-			find_words(0, i, j);
+			find_words(fd, 0, i, j);
 		}
 	}
 }
@@ -222,7 +223,7 @@ static long read_int() {
 	}
 }
 
-int main(void) {
+int main(int argc, const char *argv[]) {
 	char *in = 0;
 	char boardstr[BOARD_SIZE*BOARD_SIZE+1];
 	boardstr[0] = 0;
@@ -231,6 +232,16 @@ int main(void) {
 	long mul_col;
 	long dub_row;
 	long dub_col;
+	int output_fd;
+
+	if (argc != 2) {
+		puts("USAGE: requires 1 arg (output file)");
+		exit(1);
+	}
+
+	output_fd = open(argv[1], O_CREAT | O_RDWR, 0666);
+	if (output_fd < 0)
+		err(1, "Could not open specified file.");
 
 	for (int i = 0 ; i < BOARD_SIZE ; ++i) {
 		printf("Input row %d\n", i);
@@ -290,4 +301,5 @@ int main(void) {
 	if (dub_row != -1)
 		board[dub_row][dub_col].double_word = true;
 	print_board();
+	find_all_words(output_fd);
 }
