@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "words.h"
+#include <sys/resource.h>
 
 #define BOARD_SIZE 5
 
@@ -30,7 +31,6 @@ static bool is_word(char *word)
 	ssize_t ub = (sizeof words) / (sizeof (char *)) - 1;
 	ssize_t mp;
 	int cmp_res = -1;
-	int count = 0;
 	while (lb <= ub) {
 		mp = ((lb + ub) / 2);
 		cmp_res = strcmp(word, words[mp]);
@@ -44,15 +44,38 @@ static bool is_word(char *word)
 	return false;
 }
 
-// TODO: make this a binary search that finds a match then iterates backwards
-// until it doesn't match any more. Much faster that way.
+// can still be faster: binary search all the way to the exact point where
+// strncmp stops yielding 0 but w/e.
+static ssize_t find_first_prefix_index_fast(char *word, size_t start) {
+	ssize_t lb = start;
+	ssize_t ub = ((sizeof words) / (sizeof (char *))) - 1;
+	ssize_t mp;
+	int cmp_res = -1;
+	size_t len = strlen(word);
+	while (lb <= ub) {
+		mp = ((lb + ub) / 2);
+		cmp_res = strncmp(word, words[mp], len);
+		if (!cmp_res) {
+			while (mp >= 0 && !(cmp_res = strncmp(word, words[mp], len))) {
+				mp--;
+			}
+			return mp + 1;
+		} else if (cmp_res > 0)
+			lb = mp + 1;
+		else
+			ub = mp - 1;
+	}
+	return -1;
+}
+
 static ssize_t find_first_prefix_index(char *word, size_t start) {
 	size_t i = start;
 	size_t len = strlen(word);
 	int res;
-	while ((res = strncmp(word, words[i], len)) > 0)
+	while ((res = strncmp(word, words[i], len)) > 0) {
+		//printf("%s compared against %s\n", word, words[i]);
 		++i;
-	if (!res)
+	} if (!res)
 		return i;
 	return -1;
 }
@@ -154,14 +177,41 @@ static void check_stack_word(bool *is_a_word, ssize_t *first_prefix_index) {
 	}
 	word[i] = '\0';
 	*is_a_word = is_word(word);
-	*first_prefix_index = find_first_prefix_index(word, *first_prefix_index);
+	*first_prefix_index = find_first_prefix_index_fast(word, *first_prefix_index);
 }
 
-static void find_words(int fd, size_t curlen, int i, int j) {
+static void find_words(int fd, size_t curlen, int i, int j, int swaps) {
 	ssize_t prefix_index = 0;
 	bool is_a_word;
+	tile copy = board[i][j];
 	if (i < 0 || j < 0 || i >= BOARD_SIZE || j >= BOARD_SIZE || board[i][j].used)
 		return;
+	if (swaps > 0) {
+		for (char c = 'a' ; c <= 'z' ; c++) {
+			if (c == board[i][j].letter)
+				continue; // It's called 'efficiency.'
+			copy.letter = c;
+			push(copy);
+			check_stack_word(&is_a_word, &prefix_index);
+			if (is_a_word) {
+				dprintf(fd, "%d ", stack_value());
+				print_stack(fd);
+			}
+			if (is_a_word || prefix_index > -1) {
+				board[i][j].used = 1;
+				find_words(fd, curlen + 1, i - 1, j, swaps-1);
+				find_words(fd, curlen + 1, i - 1, j + 1, swaps-1);
+				find_words(fd, curlen + 1, i, j + 1, swaps-1);
+				find_words(fd, curlen + 1, i + 1, j + 1, swaps-1);
+				find_words(fd, curlen + 1, i + 1, j, swaps-1);
+				find_words(fd, curlen + 1, i + 1, j - 1, swaps-1);
+				find_words(fd, curlen + 1, i, j - 1, swaps-1);
+				find_words(fd, curlen + 1, i - 1, j - 1, swaps-1);
+			}
+			board[i][j].used = 0;
+			pop(board[i][j]);
+		}
+	}
 	push(board[i][j]);
 	check_stack_word(&is_a_word, &prefix_index);
 	if (is_a_word) {
@@ -170,23 +220,23 @@ static void find_words(int fd, size_t curlen, int i, int j) {
 	}
 	if (is_a_word || prefix_index > -1) {
 		board[i][j].used = 1;
-		find_words(fd, curlen + 1, i - 1, j);
-		find_words(fd, curlen + 1, i - 1, j + 1);
-		find_words(fd, curlen + 1, i, j + 1);
-		find_words(fd, curlen + 1, i + 1, j + 1);
-		find_words(fd, curlen + 1, i + 1, j);
-		find_words(fd, curlen + 1, i + 1, j - 1);
-		find_words(fd, curlen + 1, i, j - 1);
-		find_words(fd, curlen + 1, i - 1, j - 1);
+		find_words(fd, curlen + 1, i - 1, j, swaps);
+		find_words(fd, curlen + 1, i - 1, j + 1, swaps);
+		find_words(fd, curlen + 1, i, j + 1, swaps);
+		find_words(fd, curlen + 1, i + 1, j + 1, swaps);
+		find_words(fd, curlen + 1, i + 1, j, swaps);
+		find_words(fd, curlen + 1, i + 1, j - 1, swaps);
+		find_words(fd, curlen + 1, i, j - 1, swaps);
+		find_words(fd, curlen + 1, i - 1, j - 1, swaps);
 	}
 	board[i][j].used = 0;
 	pop(board[i][j]);
 }
 
-static void find_all_words(int fd) {
+static void find_all_words(int fd, int swaps) {
 	for (int i = 0 ; i < BOARD_SIZE ; ++i) {
 		for (int j = 0 ; j < BOARD_SIZE ; ++j) {
-			find_words(fd, 0, i, j);
+			find_words(fd, 0, i, j, swaps);
 		}
 	}
 }
@@ -232,6 +282,7 @@ int main(int argc, const char *argv[]) {
 	long mul_col;
 	long dub_row;
 	long dub_col;
+	long swaps;
 	int output_fd;
 
 	if (argc != 2) {
@@ -296,10 +347,20 @@ int main(int argc, const char *argv[]) {
 		break;
 	}
 
+	while (1) {
+		printf("How many swaps you got (this program allows max 2)? ");
+		swaps = read_int();
+		if (swaps < 0 || swaps > 2) {
+			puts("Value out of range. Try again.");
+			continue;
+		}
+		break;
+	}
 	init_board(boardstr);
 	board[mul_row][mul_col].letter_mult = (unsigned int)mult;
 	if (dub_row != -1)
 		board[dub_row][dub_col].double_word = true;
+	puts("");
 	print_board();
-	find_all_words(output_fd);
+	find_all_words(output_fd, swaps);
 }
